@@ -661,51 +661,73 @@ elif execute_steps and query.strip():
                 
                 if step['type'] == 'JOIN':
                     st.code(f"{step['join_type']} {step['table']} ON {step['condition']}", language='sql')
-                    
+    
+                    # Extract the actual FROM table from the query
+                    from_match = re.search(r'FROM\s+(\w+)', query, re.IGNORECASE)
+                    if from_match:
+                        base_table_name = from_match.group(1).strip()
+                    else:
+                        base_table_name = dataset_config['table1_name']  # fallback
+    
+                    # Determine which dataframe corresponds to base_table_name and join_table
+                    if base_table_name.lower() == dataset_config['table1_name'].lower():
+                        base_df = df_table1
+                        base_display_name = dataset_config['table1_name']
+                    else:
+                        base_df = df_table2
+                        base_display_name = dataset_config['table2_name']
+    
+                    if step['table'].lower() == dataset_config['table1_name'].lower():
+                        join_df = df_table1
+                        join_display_name = dataset_config['table1_name']
+                    else:
+                        join_df = df_table2
+                        join_display_name = dataset_config['table2_name']
+    
                     # Show the two tables being joined
                     st.markdown("**Tables being joined:**")
-                    
+    
                     join_col1, join_col2, join_col3 = st.columns([2, 1, 2])
-                    
+    
                     with join_col1:
-                        st.markdown(f"**📋 {dataset_config['table1_name']} table**")
-                        st.dataframe(df_table1, use_container_width=True, hide_index=True)
-                    
+                        st.markdown(f"**📋 {base_display_name} table**")
+                        st.dataframe(base_df, use_container_width=True, hide_index=True)
+    
                     with join_col2:
                         st.markdown("")
                         st.markdown("")
                         st.markdown("### 🔗")
                         st.markdown(f"**{step['join_type']}**")
                         st.markdown(f"ON `{step['condition']}`")
-                    
+    
                     with join_col3:
-                        st.markdown(f"**📋 {dataset_config['table2_name']} table**")
-                        st.dataframe(df_table2, use_container_width=True, hide_index=True)
-                    
-                    # Execute the JOIN
-                    join_query = f"SELECT * FROM {dataset_config['table1_name']} {step['join_type']} {step['table']} ON {step['condition']}"
+                        st.markdown(f"**📋 {join_display_name} table**")
+                        st.dataframe(join_df, use_container_width=True, hide_index=True)
+    
+                    # Execute the JOIN using the correct base table
+                    join_query = f"SELECT * FROM {base_table_name} {step['join_type']} {step['table']} ON {step['condition']}"
                     current_df = pd.read_sql_query(join_query, conn)
-                    
+    
                     # Fix duplicate columns
                     current_df = fix_duplicate_columns(current_df)
-                    
+    
                     st.markdown("**After joining:**")
                     st.dataframe(current_df, use_container_width=True, hide_index=True)
-                    
+    
                     # Show statistics
                     col_stat1, col_stat2, col_stat3 = st.columns(3)
                     with col_stat1:
-                        st.metric(dataset_config['table1_name'].title(), len(df_table1))
+                        st.metric(base_display_name.title(), len(base_df))
                     with col_stat2:
-                        st.metric(dataset_config['table2_name'].title(), len(df_table2))
+                        st.metric(join_display_name.title(), len(join_df))
                     with col_stat3:
                         st.metric("Joined Rows", len(current_df))
-                    
+    
                     if 'LEFT JOIN' in step['join_type']:
-                        st.info(f"💡 **LEFT JOIN** keeps all {len(df_table1)} {dataset_config['table1_name']}, even those without matches (shown as NULL)")
+                        st.info(f"💡 **LEFT JOIN** keeps all {len(base_df)} {base_display_name}, even those without matches (shown as NULL)")
                     elif 'INNER JOIN' in step['join_type']:
                         st.info(f"💡 **INNER JOIN** only keeps rows with matches ({len(current_df)} rows)")
-                
+
                 elif step['type'] == 'WHERE':
                     st.code(step['clause'], language='sql')
                     
