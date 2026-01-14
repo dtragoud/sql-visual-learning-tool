@@ -1,0 +1,3 @@
+pandas==2.3.3
+streamlit==1.52.2
+streamlit_code_editor==0.1.22
