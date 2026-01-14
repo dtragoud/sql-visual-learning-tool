@@ -18,7 +18,7 @@ Interactive web application for learning SQL through step-by-step visual executi
 
 ## Access
 
-Live app: [URL will be added after deployment]
+Live app: https://sql-visual-learning-tool-education.streamlit.app/
 
 ## Built With
 
