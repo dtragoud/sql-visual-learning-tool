@@ -744,12 +744,23 @@ elif execute_steps and query.strip():
                         if filtered_df is not None:
                             # Highlight matching rows - but limit display to reasonable size
                             if len(current_df) <= 100:
-                                display_df = current_df.copy()
-                                display_df['✓ Matches'] = ['✅ KEEP' if idx in filtered_df.index else '❌ REMOVE' 
-                                                             for idx in display_df.index]
+                                # Reset indices to ensure proper matching
+                                current_df_reset = current_df.reset_index(drop=True)
+                                filtered_df_reset = filtered_df.reset_index(drop=True)
+                                
+                                # Create a set of tuples representing filtered rows for fast lookup
+                                filtered_rows_set = set(filtered_df_reset.apply(tuple, axis=1))
+                                
+                                # Check which rows match
+                                display_df = current_df_reset.copy()
+                                display_df['✓ Matches'] = [
+                                    '✅ KEEP' if tuple(row) in filtered_rows_set else '❌ REMOVE'
+                                    for _, row in current_df_reset.iterrows()
+                                ]
                                 
                                 def highlight_where(row):
-                                    if row.name in filtered_df.index:
+                                    row_tuple = tuple(row.iloc[:-1])  # Exclude the '✓ Matches' column
+                                    if row_tuple in filtered_rows_set:
                                         return ['background-color: #d4edda'] * len(row)
                                     else:
                                         return ['background-color: #f8d7da'] * len(row)
