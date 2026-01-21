@@ -142,6 +142,31 @@ def load_term_categories_data():
     }
     return pd.DataFrame(data)
 
+# DATASET 5: CTE LEARNING - Sales Analytics
+@st.cache_data
+def load_sales_data():
+    """Sales transactions for CTE examples"""
+    data = {
+        'sale_id': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+        'product_id': [1, 2, 1, 3, 2, 4, 1, 3, 5, 2, 4, 5, 1, 3, 2],
+        'region': ['North', 'South', 'North', 'East', 'West', 'North', 'South', 'East', 'West', 'North', 'South', 'East', 'West', 'North', 'South'],
+        'sale_date': ['2026-01-01', '2026-01-01', '2026-01-02', '2026-01-02', '2026-01-03', '2026-01-03', '2026-01-04', '2026-01-04', '2026-01-05', '2026-01-05', '2026-01-06', '2026-01-06', '2026-01-07', '2026-01-07', '2026-01-08'],
+        'quantity': [5, 3, 8, 2, 6, 4, 10, 3, 7, 5, 6, 4, 9, 5, 8],
+        'revenue': [250.00, 90.00, 400.00, 140.00, 180.00, 320.00, 500.00, 210.00, 105.00, 150.00, 480.00, 60.00, 450.00, 350.00, 240.00]
+    }
+    return pd.DataFrame(data)
+
+@st.cache_data
+def load_products_data():
+    """Product catalog for CTE examples"""
+    data = {
+        'product_id': [1, 2, 3, 4, 5],
+        'product_name': ['Laptop', 'Mouse', 'Keyboard', 'Monitor', 'Webcam'],
+        'category': ['Electronics', 'Accessories', 'Accessories', 'Electronics', 'Accessories'],
+        'unit_price': [50.00, 30.00, 70.00, 80.00, 15.00]
+    }
+    return pd.DataFrame(data)
+
 # Dataset configurations
 DATASETS = {
     "Dataset 1: Customers & Orders (Basic)": {
@@ -317,6 +342,77 @@ GROUP BY term_categories.category, term_categories.difficulty, search_trends.cou
 ORDER BY avg_interest DESC 
 LIMIT 15"""
         }
+    },
+
+    "Dataset 5: Sales & Analytics (CTE Learning)": {
+        "table1_name": "sales",
+        "table2_name": "products",
+        "table1_data": load_sales_data,
+        "table2_data": load_products_data,
+        "join_key": "product_id",
+        "description": "Learn CTEs (WITH clause) step-by-step - build complex queries from simple parts",
+        "examples": {
+            "Example 1: Basic CTE - Category Totals": """WITH category_totals AS (
+    SELECT category, SUM(revenue) as total_revenue
+    FROM sales
+    INNER JOIN products ON sales.product_id = products.product_id
+    GROUP BY category
+)
+SELECT * FROM category_totals
+ORDER BY total_revenue DESC""",
+
+            "Example 2: CTE with Filter - Top Products": """WITH product_sales AS (
+    SELECT products.product_name, SUM(sales.quantity) as total_qty, SUM(sales.revenue) as total_revenue
+    FROM sales
+    INNER JOIN products ON sales.product_id = products.product_id
+    GROUP BY products.product_name
+)
+SELECT * FROM product_sales
+WHERE total_revenue > 200
+ORDER BY total_revenue DESC""",
+
+            "Example 3: CTE for Regional Analysis": """WITH regional_summary AS (
+    SELECT region, COUNT(*) as num_sales, SUM(revenue) as region_revenue
+    FROM sales
+    GROUP BY region
+)
+SELECT region, num_sales, region_revenue
+FROM regional_summary
+ORDER BY region_revenue DESC""",
+
+            "Example 4: CTE with JOIN to Original Table": """WITH high_value_products AS (
+    SELECT product_id, SUM(revenue) as total_revenue
+    FROM sales
+    GROUP BY product_id
+    HAVING SUM(revenue) > 300
+)
+SELECT products.product_name, products.category, high_value_products.total_revenue
+FROM high_value_products
+INNER JOIN products ON high_value_products.product_id = products.product_id
+ORDER BY total_revenue DESC""",
+
+            "Example 5: Daily Trends with CTE": """WITH daily_sales AS (
+    SELECT sale_date, SUM(quantity) as daily_qty, SUM(revenue) as daily_revenue
+    FROM sales
+    GROUP BY sale_date
+)
+SELECT sale_date, daily_qty, daily_revenue
+FROM daily_sales
+ORDER BY sale_date""",
+
+            "Example 6: Category Performance CTE": """WITH category_metrics AS (
+    SELECT products.category, 
+           COUNT(*) as num_transactions,
+           SUM(sales.quantity) as total_units,
+           SUM(sales.revenue) as total_revenue
+    FROM sales
+    INNER JOIN products ON sales.product_id = products.product_id
+    GROUP BY products.category
+)
+SELECT category, num_transactions, total_units, total_revenue
+FROM category_metrics
+ORDER BY total_revenue DESC"""
+        }
     }
 } 
 
@@ -326,12 +422,31 @@ def parse_sql_steps(query):
     query_upper = query.strip().upper()
     steps = []
     
-    # EXECUTION ORDER: JOIN → WHERE → SELECT → ORDER BY
+    # EXECUTION ORDER: CTE → JOIN → WHERE → SELECT → ORDER BY
     
-    # 1. Check for JOIN (always executes first if present)
-    if 'JOIN' in query_upper:
+    # For analyzing subsequent steps, use main_query (excludes CTE definition)
+    main_query = query
+    
+    # 0. Check for WITH clause (CTE - executes first)
+    if 'WITH' in query_upper:
+        # Match CTE pattern: WITH name AS (query)
+        cte_match = re.search(r'WITH\s+(\w+)\s+AS\s*\((.*?)\)\s*(SELECT.*)', query, re.IGNORECASE | re.DOTALL)
+        if cte_match:
+            steps.append({
+                'type': 'CTE',
+                'cte_name': cte_match.group(1).strip(),
+                'cte_query': cte_match.group(2).strip(),
+                'description': f"Create temporary result set '{cte_match.group(1).strip()}'"
+            })
+            # Use only the main query (after CTE) for subsequent parsing
+            main_query = cte_match.group(3).strip()
+    
+    main_query_upper = main_query.upper()
+    
+    # 1. Check for JOIN in main query (not inside CTE)
+    if 'JOIN' in main_query_upper:
         join_match = re.search(r'(LEFT JOIN|RIGHT JOIN|INNER JOIN|JOIN)\s+(\w+)\s+ON\s+(.+?)(?:WHERE|ORDER BY|GROUP BY|LIMIT|$)', 
-                               query, re.IGNORECASE | re.DOTALL)
+                               main_query, re.IGNORECASE | re.DOTALL)
         if join_match:
             steps.append({
                 'type': 'JOIN',
@@ -341,9 +456,9 @@ def parse_sql_steps(query):
                 'description': f'{join_match.group(1)} tables'
             })
     
-    # 2. Check for WHERE clause (executes after JOIN)
-    if 'WHERE' in query_upper:
-        where_match = re.search(r'WHERE\s+(.+?)(?:ORDER BY|GROUP BY|LIMIT|$)', query, re.IGNORECASE | re.DOTALL)
+    # 2. Check for WHERE clause in main query
+    if 'WHERE' in main_query_upper:
+        where_match = re.search(r'WHERE\s+(.+?)(?:ORDER BY|GROUP BY|LIMIT|$)', main_query, re.IGNORECASE | re.DOTALL)
         if where_match:
             steps.append({
                 'type': 'WHERE',
@@ -351,8 +466,8 @@ def parse_sql_steps(query):
                 'description': 'Filter rows based on condition'
             })
     
-    # 3. Check for SELECT clause (which columns to keep - happens conceptually after filtering)
-    select_match = re.search(r'SELECT\s+(.+?)\s+FROM', query, re.IGNORECASE | re.DOTALL)
+    # 3. Check for SELECT clause in main query
+    select_match = re.search(r'SELECT\s+(.+?)\s+FROM', main_query, re.IGNORECASE | re.DOTALL)
     if select_match:
         select_cols = select_match.group(1).strip()
         if select_cols != '*' and 'COUNT' not in select_cols.upper() and 'SUM' not in select_cols.upper():
@@ -362,12 +477,11 @@ def parse_sql_steps(query):
                 'description': 'Select specific columns'
             })
     
-    # 4. Check for GROUP BY clause (executes before ORDER BY)
-    if 'GROUP BY' in query_upper:
-        group_match = re.search(r'GROUP BY\s+(.+?)(?:HAVING|ORDER BY|LIMIT|$)', query, re.IGNORECASE | re.DOTALL)
+    # 4. Check for GROUP BY clause in main query
+    if 'GROUP BY' in main_query_upper:
+        group_match = re.search(r'GROUP BY\s+(.+?)(?:HAVING|ORDER BY|LIMIT|$)', main_query, re.IGNORECASE | re.DOTALL)
         if group_match:
-            # Also extract any aggregate functions from SELECT
-            select_match = re.search(r'SELECT\s+(.+?)\s+FROM', query, re.IGNORECASE | re.DOTALL)
+            select_match = re.search(r'SELECT\s+(.+?)\s+FROM', main_query, re.IGNORECASE | re.DOTALL)
             steps.append({
                 'type': 'GROUP BY',
                 'clause': group_match.group(1).strip(),
@@ -375,9 +489,9 @@ def parse_sql_steps(query):
                 'description': 'Group rows and aggregate'
             })
     
-    # . Check for ORDER BY clause (executes last)
-    if 'ORDER BY' in query_upper:
-        order_match = re.search(r'ORDER BY\s+(.+?)(?:LIMIT|$)', query, re.IGNORECASE | re.DOTALL)
+    # 5. Check for ORDER BY clause in main query
+    if 'ORDER BY' in main_query_upper:
+        order_match = re.search(r'ORDER BY\s+(.+?)(?:LIMIT|$)', main_query, re.IGNORECASE | re.DOTALL)
         if order_match:
             steps.append({
                 'type': 'ORDER BY',
@@ -659,18 +773,67 @@ elif execute_steps and query.strip():
                 step_number += 1
                 st.markdown(f"### Step {step_number}: {step['type']} - *{step['description']}*")
                 
-                if step['type'] == 'JOIN':
+                if step['type'] == 'CTE':
+                    st.code(f"WITH {step['cte_name']} AS (\n{step['cte_query']}\n)", language='sql')
+                    
+                    # Show original tables being used in CTE
+                    st.markdown("**📊 Original tables used in CTE:**")
+                    cte_col1, cte_col2 = st.columns(2)
+                    with cte_col1:
+                        st.markdown(f"**`{dataset_config['table1_name']}`**")
+                        st.dataframe(df_table1.head(8), use_container_width=True, hide_index=True)
+                    with cte_col2:
+                        st.markdown(f"**`{dataset_config['table2_name']}`**")
+                        st.dataframe(df_table2.head(8), use_container_width=True, hide_index=True)
+                    
+                    # Execute the CTE query to show intermediate result
+                    try:
+                        cte_result = pd.read_sql_query(step['cte_query'], conn)
+                        cte_result = fix_duplicate_columns(cte_result)
+                        
+                        st.markdown(f"**🔄 CTE Result - `{step['cte_name']}`:** (This temporary result will be used in the main query)")
+                        st.dataframe(cte_result, use_container_width=True, hide_index=True)
+                        
+                        # Register CTE result as a table for subsequent queries
+                        cte_result.to_sql(step['cte_name'], conn, index=False, if_exists='replace')
+                        current_df = cte_result
+                        
+                        st.info(f"💡 **CTE Explanation:** The WITH clause creates a temporary named result set `{step['cte_name']}` with {len(cte_result)} rows. This makes the main query simpler and more readable.")
+                    except Exception as e:
+                        st.error(f"Error executing CTE: {str(e)}")
+                
+                elif step['type'] == 'JOIN':
                     st.code(f"{step['join_type']} {step['table']} ON {step['condition']}", language='sql')
     
-                    # Extract the actual FROM table from the query
-                    from_match = re.search(r'FROM\s+(\w+)', query, re.IGNORECASE)
+                    # Check if we have a CTE result (current_df is already set from CTE step)
+                    has_cte = any(s['type'] == 'CTE' for s in steps)
+                    
+                    # Extract the actual FROM table from the main query
+                    # For CTE queries, we need to look at the main query part
+                    if has_cte:
+                        # Get the main query (after CTE)
+                        cte_match = re.search(r'WITH\s+\w+\s+AS\s*\(.*?\)\s*(SELECT.*)', query, re.IGNORECASE | re.DOTALL)
+                        if cte_match:
+                            main_query_part = cte_match.group(1)
+                            from_match = re.search(r'FROM\s+(\w+)', main_query_part, re.IGNORECASE)
+                        else:
+                            from_match = re.search(r'FROM\s+(\w+)', query, re.IGNORECASE)
+                    else:
+                        from_match = re.search(r'FROM\s+(\w+)', query, re.IGNORECASE)
+                    
                     if from_match:
                         base_table_name = from_match.group(1).strip()
                     else:
                         base_table_name = dataset_config['table1_name']  # fallback
     
-                    # Determine which dataframe corresponds to base_table_name and join_table
-                    if base_table_name.lower() == dataset_config['table1_name'].lower():
+                    # Check if base table is a CTE result (use current_df) or an original table
+                    cte_names = [s['cte_name'].lower() for s in steps if s['type'] == 'CTE']
+                    
+                    if base_table_name.lower() in cte_names and current_df is not None:
+                        # Base is CTE result - use current_df
+                        base_df = current_df
+                        base_display_name = base_table_name
+                    elif base_table_name.lower() == dataset_config['table1_name'].lower():
                         base_df = df_table1
                         base_display_name = dataset_config['table1_name']
                     else:
@@ -680,9 +843,13 @@ elif execute_steps and query.strip():
                     if step['table'].lower() == dataset_config['table1_name'].lower():
                         join_df = df_table1
                         join_display_name = dataset_config['table1_name']
-                    else:
+                    elif step['table'].lower() == dataset_config['table2_name'].lower():
                         join_df = df_table2
                         join_display_name = dataset_config['table2_name']
+                    else:
+                        # Could be joining to a CTE
+                        join_df = current_df if current_df is not None else df_table2
+                        join_display_name = step['table']
     
                     # Show the two tables being joined
                     st.markdown("**Tables being joined:**")
@@ -690,8 +857,8 @@ elif execute_steps and query.strip():
                     join_col1, join_col2, join_col3 = st.columns([2, 1, 2])
     
                     with join_col1:
-                        st.markdown(f"**📋 {base_display_name} table**")
-                        st.dataframe(base_df, use_container_width=True, hide_index=True)
+                        st.markdown(f"**📋 {base_display_name}**")
+                        st.dataframe(base_df.head(10) if len(base_df) > 10 else base_df, use_container_width=True, hide_index=True)
     
                     with join_col2:
                         st.markdown("")
@@ -701,10 +868,10 @@ elif execute_steps and query.strip():
                         st.markdown(f"ON `{step['condition']}`")
     
                     with join_col3:
-                        st.markdown(f"**📋 {join_display_name} table**")
-                        st.dataframe(join_df, use_container_width=True, hide_index=True)
+                        st.markdown(f"**📋 {join_display_name}**")
+                        st.dataframe(join_df.head(10) if len(join_df) > 10 else join_df, use_container_width=True, hide_index=True)
     
-                    # Execute the JOIN using the correct base table
+                    # Execute the JOIN - use the already-registered CTE table if applicable
                     join_query = f"SELECT * FROM {base_table_name} {step['join_type']} {step['table']} ON {step['condition']}"
                     current_df = pd.read_sql_query(join_query, conn)
     
@@ -975,6 +1142,48 @@ if selected_dataset_name == "Dataset 4: Search Trends & Categories (Time-Series)
         - Using wrong aggregation (SUM vs AVG)
         - Double-counting in JOINs
         - Not understanding data granularity
+        """)
+elif selected_dataset_name == "Dataset 5: Sales & Analytics (CTE Learning)":
+    tip_col1, tip_col2, tip_col3, tip_col4 = st.columns(4)
+    
+    with tip_col1:
+        st.markdown("""
+        **sales columns:**
+        - `sale_id`
+        - `product_id`
+        - `region`
+        - `sale_date`
+        - `quantity`
+        - `revenue`
+        """)
+    
+    with tip_col2:
+        st.markdown("""
+        **products columns:**
+        - `product_id`
+        - `product_name`
+        - `category`
+        - `unit_price`
+        """)
+    
+    with tip_col3:
+        st.markdown("""
+        **CTE Syntax:**
+        ```sql
+        WITH cte_name AS (
+            SELECT ...
+        )
+        SELECT * FROM cte_name
+        ```
+        """)
+    
+    with tip_col4:
+        st.markdown("""
+        **CTE Benefits:**
+        - Breaks complex queries into steps
+        - Improves readability
+        - Can be referenced multiple times
+        - Easier to debug and test
         """)
 else:
     # Original footer for other datasets
